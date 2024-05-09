@@ -9,8 +9,9 @@ resource "aws_vpc" "vpc" {
   }
 }
 
+###############################################################################################################################################
 # Create a public Internet Gateway
-
+###############################################################################################################################################
 resource "aws_internet_gateway" "my_igw" {
   vpc_id = aws_vpc.vpc.id
 
@@ -19,7 +20,10 @@ resource "aws_internet_gateway" "my_igw" {
   }
 }
 
+
+###############################################################################################################################################
 # Public Subnets
+###############################################################################################################################################
 resource "aws_subnet" "public_subnet_1" {
   vpc_id                  = aws_vpc.vpc.id
   cidr_block              = "10.0.1.0/24"
@@ -31,8 +35,31 @@ resource "aws_subnet" "public_subnet_1" {
   }
 }
 
-# Create Public Route Table pointing to the IGW
+resource "aws_subnet" "public_subnet_2" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = "10.0.2.0/24"
+  map_public_ip_on_launch = true
+  availability_zone       = "${var.region}b"
 
+  tags = {
+    Name = "${var.name}_${var.region}b"
+  }
+}
+
+resource "aws_subnet" "public_subnet_3" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = "10.0.3.0/24"
+  map_public_ip_on_launch = true
+  availability_zone       = "${var.region}c"
+
+  tags = {
+    Name = "${var.name}_${var.region}c"
+  }
+}
+
+###############################################################################################################################################
+# Create Public Route Table pointing to the IGW
+###############################################################################################################################################
 resource "aws_route_table" "public_route_table" {
   vpc_id = aws_vpc.vpc.id
 
@@ -46,9 +73,20 @@ resource "aws_route_table" "public_route_table" {
   }
 }
 
+###############################################################################################################################################
 # Associate public subnets with the Public Route Table
-
+###############################################################################################################################################
 resource "aws_route_table_association" "public_rta_1" {
   subnet_id      = aws_subnet.public_subnet_1.id
+  route_table_id = aws_route_table.public_route_table.id
+}
+
+resource "aws_route_table_association" "public_rta_2" {
+  subnet_id      = aws_subnet.public_subnet_2.id
+  route_table_id = aws_route_table.public_route_table.id
+}
+
+resource "aws_route_table_association" "public_rta_3" {
+  subnet_id      = aws_subnet.public_subnet_3.id
   route_table_id = aws_route_table.public_route_table.id
 }

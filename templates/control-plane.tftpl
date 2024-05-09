@@ -4,7 +4,10 @@ echo "CONTROL PLANE PROVISIONING"
 
 echo "The script is based on: https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/"
 
+# Turn swap off
 sudo swapoff -a
+sudo sed -i '/swap/d' /etc/fstab
+mount -a
 
 sudo apt-get update && sudo apt-get upgrade
 
@@ -82,8 +85,8 @@ host_ip_address=$(ip a show enX0 | grep "inet\b" | awk '{print $2}' | cut -d/ -f
 kubeadm init --pod-network-cidr="${pod-network-cidr}" --apiserver-advertise-address=$host_ip_address
 
 
-# TO MAKE KUBECTL WORK FOR YOUR NON-ROOT USER
-echo "MAKE KUBECTL WORK FOR YOUR NON-ROOT USER"
+# TO MAKE KUBECTL WORK FOR YOUR USER
+echo "MAKE KUBECTL WORK FOR YOUR USER"
 
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
@@ -92,11 +95,135 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 echo "MAKE KUBECTL WORK FOR YOUR NON-ROOT USER COMPLTE"
 
 
+# WORKER NODE JOIN COMMAND
+echo "WORKER NODE JOIN COMMAND"
+kubeadm token create --print-join-command
+
 
 # INSTALLING flannel
 kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 
+# # Setup flannel
+# kubectl create --kubeconfig /root/.kube/config ns kube-flannel
+# kubectl label --overwrite ns kube-flannel pod-security.kubernetes.io/enforce=privileged
+# helm repo add flannel https://flannel-io.github.io/flannel/
+# helm install flannel --set podCidr="${pod-network-cidr}" --namespace kube-flannel flannel/flannel
 
 
-echo "WORKER NODE JOIN COMMAND"
-kubeadm token create --print-join-command
+# INSTALLING HELM 
+# Installing HELM package manager - https://helm.sh/docs/intro/install/
+curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+sudo apt-get install apt-transport-https --yes
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+sudo apt-get update
+sudo apt-get install helm
+
+
+# INSTALLING AWS LOAD BALANCER CONTROLLER
+
+# # INSTALL AWS LOAD BALANCER CONTROLLER
+# helm repo add eks https://aws.github.io/eks-charts
+# helm repo update eks
+
+# helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+#   --set clusterName=kubernetes \
+#   --set serviceAccount.create=true \
+#   --set serviceAccount.name="aws-load-balancer-controller" \
+#   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::"${account_id}":role/ALBIngressControllerRole" \
+#   -n kube-system
+
+
+# Annotate the kubernetes service account with the ARN of the IAM role you created.
+kubectl annotate serviceaccount -n kube-system aws-load-balancer-controller \
+    eks.amazonaws.com/role-arn=arn:aws:iam::"${account_id}":role/"${load_balancer_controller_iam_role}"
+
+# Verify that the controller is installed
+kubectl get deployment -n kube-system aws-load-balancer-controller
+
+
+# INSTALLING INGRESS CONTROLLER USING HELM
+
+# Installing Ingress-Nginx Controller - https://kubernetes.github.io/ingress-nginx/deploy/#quick-start
+helm upgrade --install ingress-nginx ingress-nginx \
+  --repo https://kubernetes.github.io/ingress-nginx \
+  --namespace ingress-nginx --create-namespace
+
+
+# CREATING AN INGRESS RESOURCE
+
+## Temporary fix for https://stackoverflow.com/questions/61616203/nginx-ingress-controller-failed-calling-webhook
+kubectl delete -A ValidatingWebhookConfiguration ingress-nginx-admission
+
+## This can be easily run with: kubectl apply -f https://storage.googleapis.com/minikube-site-examples/ingress-example.yaml but I choose to list the entire script
+
+# Apply ingress resource
+cat > ingress-example.yaml << 'EOF'
+kind: Pod
+apiVersion: v1
+metadata:
+  name: foo-app
+  labels:
+    app: foo
+spec:
+  containers:
+    - name: foo-app
+      image: 'kicbase/echo-server:1.0'
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: foo-service
+spec:
+  selector:
+    app: foo
+  ports:
+    - port: 8080
+---
+kind: Pod
+apiVersion: v1
+metadata:
+  name: bar-app
+  labels:
+    app: bar
+spec:
+  containers:
+    - name: bar-app
+      image: 'kicbase/echo-server:1.0'
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: bar-service
+spec:
+  selector:
+    app: bar
+  ports:
+    - port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: example-ingress
+spec:
+  rules:
+    - http:
+        paths:
+          - pathType: Prefix
+            path: /foo
+            backend:
+              service:
+                name: foo-service
+                port:
+                  number: 8080
+          - pathType: Prefix
+            path: /bar
+            backend:
+              service:
+                name: bar-service
+                port:
+                  number: 8080
+---
+EOF
+
+# Run the Kubernetes ingress resource script
+kubectl apply -f ingress-example.yaml

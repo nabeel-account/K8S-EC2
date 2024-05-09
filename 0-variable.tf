@@ -14,5 +14,11 @@ variable "key_name" {
 }
 
 variable "pod-network-cidr" {
+  description = "Kubernetes pod cidr network range"
   default = "10.244.0.0/16"
+}
+
+variable "ami" {
+  description = "Amazon Machine Images for us-east-1"
+  default = "ami-04b70fa74e45c3917"
 }
