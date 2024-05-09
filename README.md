@@ -17,3 +17,4 @@ As an alternative to using, OIDC, a simply method to achiving IRSA is using inst
 
 ## Improvements
 - Good template for user data: https://github.com/Ahmad-Faqehi/Terraform-Bulding-K8S/blob/main/scripts/install_k8s_msr.sh
+- Due to the missing OIDC, connectivity to AWS resources and in paticular the application load balancer from the Ingress Controller is work in progress
